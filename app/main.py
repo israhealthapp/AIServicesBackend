@@ -39,6 +39,14 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.get("/")
+    async def root():
+        return {"status": "running", "service": "IsraHealthcare Chatbot"}
+
+    @app.get("/health")
+    async def health():
+        return {"ok": True}
+
     app.include_router(chat_router)
     app.include_router(intent_router)
     app.include_router(caregiver_summary_router)

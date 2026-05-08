@@ -12,7 +12,13 @@ def _get_supabase() -> Client:
     return create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
 
 
+PUBLIC_PATHS = {"/", "/health"}
+
+
 async def verify_token(request: Request):
+    if request.url.path in PUBLIC_PATHS:
+        return None
+
     auth_header = request.headers.get("authorization", "")
 
     if not auth_header:
