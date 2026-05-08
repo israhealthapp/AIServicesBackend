@@ -1,7 +1,8 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 
 from app.schemas.voice_command import VoiceCommandResponse
 from app.services.voice_command_service import voice_command_service
+from app.core.auth import verify_token
 
 router = APIRouter(prefix="/api", tags=["voice_command"])
 
@@ -9,7 +10,8 @@ router = APIRouter(prefix="/api", tags=["voice_command"])
 @router.post("/voice_command", response_model=VoiceCommandResponse)
 async def voice_command(
     file: UploadFile = File(...),
-    language: str = Form(None)
+    language: str = Form(None),
+    user = Depends(verify_token)
 ):
     """Transcribe audio and parse intent in a single Gemini call."""
     if not file.content_type or not file.content_type.startswith("audio/"):

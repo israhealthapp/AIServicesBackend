@@ -28,7 +28,6 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
         docs_url="/docs" if settings.DEBUG else None,
         redoc_url=None,
-        dependencies=[Depends(verify_token)],
     )
 
     app.add_middleware(

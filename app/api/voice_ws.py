@@ -32,6 +32,29 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, De
 from app.core.config import get_settings
 from app.core.logging import logger
 from app.core.system_prompt import SYSTEM_PROMPT
+from app.core.auth import _get_supabase
+
+
+async def validate_websocket_token(websocket: WebSocket) -> dict:
+    """Extract and validate token from WebSocket query params."""
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=4001, reason="Missing token")
+        raise HTTPException(status_code=401, detail="Missing token")
+
+    try:
+        supabase = _get_supabase()
+        response = supabase.auth.get_user(token)
+        if not response.user:
+            await websocket.close(code=4001, reason="Invalid token")
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return response.user
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[WS] Token validation error: {e}")
+        await websocket.close(code=4001, reason="Token verification failed")
+        raise HTTPException(status_code=401, detail="Token verification failed")
 
 # Deepgram imports (loaded dynamically to avoid missing key errors)
 # from deepgram import DeepgramClient, PrerecordedOptions, LiveTranscriptionEvents, LiveOptions
@@ -58,6 +81,13 @@ async def voice_command_ws(websocket: WebSocket):
     settings = get_settings()
     print("[WS-CMD] Client connected - DIRECT PRINT", flush=True)
     logger.info("[WS-CMD] Client connected")
+
+    # Validate token from query params
+    try:
+        user = await validate_websocket_token(websocket)
+        logger.info(f"[WS-CMD] Token validated for user: {user.id}")
+    except HTTPException:
+        return
 
     if not settings.DEEPGRAM_API_KEY:
         logger.error("[WS-CMD] DEEPGRAM_API_KEY not configured")
@@ -468,6 +498,13 @@ async def voice_ws(websocket: WebSocket):
     await websocket.accept()
     settings = get_settings()
     logger.info("[WS] Client connected")
+
+    # Validate token from query params
+    try:
+        user = await validate_websocket_token(websocket)
+        logger.info(f"[WS] Token validated for user: {user.id}")
+    except HTTPException:
+        return
 
     # ── Guard: validate required API keys at connection time ──────────────────
     if not settings.DEEPGRAM_API_KEY:
