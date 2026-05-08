@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     PORT: int = 8000
     ALLOWED_ORIGINS: list[str] = ["*"]
 
+    SUPABASE_URL: str
+    SUPABASE_ANON_KEY: str
+
     GEMINI_API_KEY: str
     GEMINI_MODEL: str = "gemini-2.5-flash"
     GEMINI_MAX_TOKENS: int = 1024

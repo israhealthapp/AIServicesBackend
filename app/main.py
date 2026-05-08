@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.auth import verify_token
 from app.core.config import get_settings
 from app.core.logging import logger
 from app.api.chat import router as chat_router
@@ -27,6 +28,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
         docs_url="/docs" if settings.DEBUG else None,
         redoc_url=None,
+        dependencies=[Depends(verify_token)],
     )
 
     app.add_middleware(
