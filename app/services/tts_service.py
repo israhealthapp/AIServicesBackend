@@ -63,7 +63,7 @@ class TTSService:
             return audio_base64
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"[TTS] ElevenLabs API error: {e.status_code} — {e.response.text}")
+            logger.error(f"[TTS] ElevenLabs API error: {e.response.status_code} — {e.response.text}")
             return None
         except Exception as e:
             logger.error(f"[TTS] Unexpected error: {e}", exc_info=True)
