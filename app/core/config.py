@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     WHISPER_API_KEY: str = ""  # Optional: for faster transcription via whisper-api.com
     USE_WHISPER_TRANSCRIPTION: bool = True  # Toggle between Whisper and Gemini for transcription
 
+    ELEVENLABS_API_KEY: str = ""  # Optional: for text-to-speech
+    ELEVENLABS_VOICE_ID: str = "21m00Tcm4TlvDq8ikWAM"  # Rachel (default voice)
+    ELEVENLABS_MODEL_ID: str = "eleven_multilingual_v2"  # Supports Urdu and English
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
