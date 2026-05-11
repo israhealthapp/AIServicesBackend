@@ -33,6 +33,7 @@ from app.core.config import get_settings
 from app.core.logging import logger
 from app.core.system_prompt import SYSTEM_PROMPT
 from app.core.auth import _get_supabase
+from app.db import history as history_db
 
 
 async def validate_websocket_token(websocket: WebSocket) -> dict:
@@ -222,17 +223,21 @@ async def voice_command_ws(websocket: WebSocket):
                         logger.info(f"[WS-CMD] Final text: '{final_text[:80]}'")
 
                         # Parse intent with Gemini
+                        _action = "unknown"
+                        _params: dict = {}
                         try:
                             from app.services.intent_service import intent_service
                             intent_result = intent_service.parse(final_text.strip(), selected_language)
                             logger.info(f"[WS-CMD] Intent parsed: action={intent_result.get('action')}, params={intent_result.get('params')}")
+                            _action = intent_result.get("action", "unknown")
+                            _params = intent_result.get("params", {})
 
                             await websocket.send_json({
                                 "type": "final_command",
                                 "text": final_text.strip(),
                                 "language": selected_language,
-                                "action": intent_result.get("action", "unknown"),
-                                "params": intent_result.get("params", {}),
+                                "action": _action,
+                                "params": _params,
                             })
                         except Exception as e:
                             logger.error(f"[WS-CMD] Intent parsing error: {e}", exc_info=True)
@@ -243,6 +248,22 @@ async def voice_command_ws(websocket: WebSocket):
                                 "action": "unknown",
                                 "params": {},
                             })
+
+                        # Persist to DB (fire-and-forget)
+                        import json as _json
+                        _sess = history_db.create_session(
+                            user.id, "voice_command",
+                            language=selected_language if selected_language != "multi" else None,
+                            title=final_text.strip()[:80],
+                        )
+                        if _sess:
+                            _umid = history_db.save_message(_sess, user.id, "user", final_text.strip(), sequence_number=1)
+                            if _umid:
+                                history_db.save_voice_metadata(_umid, "deepgram", detected_language=selected_language if selected_language != "multi" else None)
+                            _amid = history_db.save_message(_sess, user.id, "assistant", _json.dumps({"action": _action, "params": _params}), sequence_number=2)
+                            if _amid:
+                                history_db.save_intent_result(_amid, user.id, _action, _params, source="voice_ws")
+                            history_db.close_session(_sess)
 
                         final_sent = True
                     else:
@@ -271,15 +292,19 @@ async def voice_command_ws(websocket: WebSocket):
 
             if final_text.strip():
                 logger.info(f"[Deepgram-CMD] Flushing: '{final_text[:80]}'")
+                _action = "unknown"
+                _params: dict = {}
                 try:
                     from app.services.intent_service import intent_service
                     intent_result = intent_service.parse(final_text.strip(), selected_language)
+                    _action = intent_result.get("action", "unknown")
+                    _params = intent_result.get("params", {})
                     await websocket.send_json({
                         "type": "final_command",
                         "text": final_text.strip(),
                         "language": selected_language,
-                        "action": intent_result.get("action", "unknown"),
-                        "params": intent_result.get("params", {}),
+                        "action": _action,
+                        "params": _params,
                     })
                 except Exception as e:
                     logger.error(f"[WS-CMD] Intent parsing error on flush: {e}", exc_info=True)
@@ -290,6 +315,21 @@ async def voice_command_ws(websocket: WebSocket):
                         "action": "unknown",
                         "params": {},
                     })
+
+                import json as _json
+                _sess = history_db.create_session(
+                    user.id, "voice_command",
+                    language=selected_language if selected_language != "multi" else None,
+                    title=final_text.strip()[:80],
+                )
+                if _sess:
+                    _umid = history_db.save_message(_sess, user.id, "user", final_text.strip(), sequence_number=1)
+                    if _umid:
+                        history_db.save_voice_metadata(_umid, "deepgram", detected_language=selected_language if selected_language != "multi" else None)
+                    _amid = history_db.save_message(_sess, user.id, "assistant", _json.dumps({"action": _action, "params": _params}), sequence_number=2)
+                    if _amid:
+                        history_db.save_intent_result(_amid, user.id, _action, _params, source="voice_ws")
+                    history_db.close_session(_sess)
 
         await result_q.put(None)
         await results_task
@@ -505,6 +545,8 @@ async def voice_ws(websocket: WebSocket):
         logger.info(f"[WS] Token validated for user: {user.id}")
     except HTTPException:
         return
+
+    ws_session_id: Optional[str] = history_db.create_session(user.id, "voice_chat")
 
     # ── Guard: validate required API keys at connection time ──────────────────
     if not settings.DEEPGRAM_API_KEY:
@@ -782,6 +824,25 @@ async def voice_ws(websocket: WebSocket):
                     chat_history.append({"role": "assistant", "content": response})
                     await send_final_response(response)
 
+                    # Persist this turn to DB (after response is already sent)
+                    if ws_session_id:
+                        user_seq = len(chat_history) - 1
+                        asst_seq = len(chat_history)
+                        _umid = history_db.save_message(
+                            ws_session_id, user.id, "user", final_text,
+                            sequence_number=user_seq,
+                        )
+                        history_db.save_message(
+                            ws_session_id, user.id, "assistant", response,
+                            sequence_number=asst_seq,
+                            model_name=settings.GEMINI_MODEL,
+                        )
+                        if _umid:
+                            history_db.save_voice_metadata(
+                                _umid, "deepgram",
+                                detected_language=selected_language if selected_language != "multi" else None,
+                            )
+
                 except Exception as exc:
                     logger.error(f"[Final] Unexpected error: {exc}", exc_info=True)
                     await websocket.send_json({"type": "error", "message": str(exc)})
@@ -866,4 +927,6 @@ async def voice_ws(websocket: WebSocket):
 
         await result_q.put(None)   # Shut down process_results
         await results_task
+        if ws_session_id:
+            history_db.close_session(ws_session_id)
         logger.info("[WS] Session closed")

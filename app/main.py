@@ -12,6 +12,7 @@ from app.api.voice_command import router as voice_command_router
 from app.api.voice_ws import router as voice_ws_router
 from app.api.caregiver_summary import router as caregiver_summary_router
 from app.api.tts import router as tts_router
+from app.api.history import router as history_router
 
 
 @asynccontextmanager
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(voice_command_router)
     app.include_router(voice_ws_router)
     app.include_router(tts_router)
+    app.include_router(history_router)
 
     return app
 
