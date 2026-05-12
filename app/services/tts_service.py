@@ -45,9 +45,12 @@ class TTSService:
                 "text": text,
                 "model_id": self._model_id,
                 "voice_settings": {
-                    "stability": 0.5,
-                    "similarity_boost": 0.75,
+                    "stability": 0.75,
+                    "similarity_boost": 0.45,
+                    "style": 0,
+                    "speaker_boost": True,
                 },
+                "speed": 0.85,
             }
 
             logger.info(f"[TTS] Calling ElevenLabs for text: '{text[:60]}...'")

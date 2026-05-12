@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     USE_WHISPER_TRANSCRIPTION: bool = True  # Toggle between Whisper and Gemini for transcription
 
     ELEVENLABS_API_KEY: str = ""  # Optional: for text-to-speech
-    ELEVENLABS_VOICE_ID: str = "21m00Tcm4TlvDq8ikWAM"  # Rachel (default voice)
+    ELEVENLABS_VOICE_ID: str = "6MoEUz34rbRrmmyxgRm4"  # Urdu-optimized voice
     ELEVENLABS_MODEL_ID: str = "eleven_multilingual_v2"  # Supports Urdu and English
 
     model_config = {
