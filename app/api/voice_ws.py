@@ -232,22 +232,33 @@ async def voice_command_ws(websocket: WebSocket):
                             _action = intent_result.get("action", "unknown")
                             _params = intent_result.get("params", {})
 
+                            # Don't send transcribed text if it's Hindi (Devanagari script)
+                            display_text = "" if _contains_devanagari(final_text) else final_text.strip()
+
                             await websocket.send_json({
                                 "type": "final_command",
-                                "text": final_text.strip(),
+                                "text": display_text,
                                 "language": selected_language,
                                 "action": _action,
                                 "params": _params,
                             })
                         except Exception as e:
+                            error_msg = str(e).lower()
                             logger.error(f"[WS-CMD] Intent parsing error: {e}", exc_info=True)
-                            await websocket.send_json({
-                                "type": "final_command",
-                                "text": final_text.strip(),
-                                "language": selected_language,
-                                "action": "unknown",
-                                "params": {},
-                            })
+                            # Handle API quota/model errors with generic message
+                            if any(x in error_msg for x in ['quota', 'rate limit', 'unavailable', 'overloaded']):
+                                await websocket.send_json({
+                                    "type": "error",
+                                    "message": "Model not available. Please try again later.",
+                                })
+                            else:
+                                await websocket.send_json({
+                                    "type": "final_command",
+                                    "text": "",
+                                    "language": selected_language,
+                                    "action": "unknown",
+                                    "params": {},
+                                })
 
                         # Persist to DB (fire-and-forget)
                         import json as _json
@@ -299,22 +310,34 @@ async def voice_command_ws(websocket: WebSocket):
                     intent_result = intent_service.parse(final_text.strip(), selected_language)
                     _action = intent_result.get("action", "unknown")
                     _params = intent_result.get("params", {})
+
+                    # Don't send transcribed text if it's Hindi (Devanagari script)
+                    display_text = "" if _contains_devanagari(final_text) else final_text.strip()
+
                     await websocket.send_json({
                         "type": "final_command",
-                        "text": final_text.strip(),
+                        "text": display_text,
                         "language": selected_language,
                         "action": _action,
                         "params": _params,
                     })
                 except Exception as e:
+                    error_msg = str(e).lower()
                     logger.error(f"[WS-CMD] Intent parsing error on flush: {e}", exc_info=True)
-                    await websocket.send_json({
-                        "type": "final_command",
-                        "text": final_text.strip(),
-                        "language": selected_language,
-                        "action": "unknown",
-                        "params": {},
-                    })
+                    # Handle API quota/model errors with generic message
+                    if any(x in error_msg for x in ['quota', 'rate limit', 'unavailable', 'overloaded']):
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Model not available. Please try again later.",
+                        })
+                    else:
+                        await websocket.send_json({
+                            "type": "final_command",
+                            "text": "",
+                            "language": selected_language,
+                            "action": "unknown",
+                            "params": {},
+                        })
 
                 import json as _json
                 _sess = history_db.create_session(
@@ -728,9 +751,15 @@ async def voice_ws(websocket: WebSocket):
                     token_q.put(("done", full_response)), loop
                 )
             except Exception as exc:
+                error_msg = str(exc).lower()
                 logger.error(f"[Gemini] Thread error: {exc}", exc_info=True)
+                # Return generic message for API errors (quota, model unavailable, etc)
+                if any(x in error_msg for x in ['quota', 'rate limit', 'unavailable', 'overloaded']):
+                    generic_error = "Model not available. Please try again later."
+                else:
+                    generic_error = str(exc)
                 asyncio.run_coroutine_threadsafe(
-                    token_q.put(("error", str(exc))), loop
+                    token_q.put(("error", generic_error)), loop
                 )
 
         thread = threading.Thread(target=_run_sync, daemon=True)
@@ -844,8 +873,13 @@ async def voice_ws(websocket: WebSocket):
                             )
 
                 except Exception as exc:
+                    error_msg = str(exc).lower()
                     logger.error(f"[Final] Unexpected error: {exc}", exc_info=True)
-                    await websocket.send_json({"type": "error", "message": str(exc)})
+                    # Return generic message for API errors
+                    if any(x in error_msg for x in ['quota', 'rate limit', 'unavailable', 'overloaded']):
+                        await websocket.send_json({"type": "error", "message": "Model not available. Please try again later."})
+                    else:
+                        await websocket.send_json({"type": "error", "message": "Processing error. Please try again."})
 
     results_task = asyncio.create_task(process_results())
 

@@ -5,7 +5,7 @@ from datetime import date
 
 from google import genai
 from google.genai import types
-from fastapi import UploadFile
+from fastapi import UploadFile, HTTPException
 
 from app.core.config import get_settings
 from app.core.intent_prompt import get_intent_system_prompt
@@ -131,6 +131,11 @@ class VoiceCommandService:
             logger.error(f"JSON decode error: {e}")
             return {"text": "", "language": "unknown", "action": "unknown", "params": {}}
         except Exception as e:
+            # Catch API errors (quota, model unavailable, etc) and return generic message
+            error_msg = str(e).lower()
+            if any(x in error_msg for x in ['quota', 'rate limit', 'unavailable', 'overloaded']):
+                logger.error(f"Gemini API error: {e}")
+                raise HTTPException(status_code=503, detail="Model not available. Please try again later.")
             logger.error(f"Voice command error: {e}")
             raise
         finally:

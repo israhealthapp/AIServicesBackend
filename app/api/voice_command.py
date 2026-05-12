@@ -36,16 +36,19 @@ async def voice_command(
     if not result["text"]:
         raise HTTPException(status_code=422, detail="No speech detected in audio")
 
+    # Store transcribed text in DB for logging, but don't return it to client
+    transcribed_text = result["text"]
+
     if user:
         detected_lang = result.get("language")
         session_id = db.create_session(
             user.id, "voice_command",
             language=detected_lang,
-            title=result["text"][:80],
+            title=transcribed_text[:80],
         )
         if session_id:
             user_msg_id = db.save_message(
-                session_id, user.id, "user", result["text"], sequence_number=1
+                session_id, user.id, "user", transcribed_text, sequence_number=1
             )
             if user_msg_id:
                 db.save_voice_metadata(
@@ -68,4 +71,9 @@ async def voice_command(
                 )
             db.close_session(session_id)
 
-    return result
+    # Don't return transcribed text to client (could be Hindi or unwanted language)
+    return {
+        "language": result.get("language"),
+        "action": result.get("action"),
+        "params": result.get("params"),
+    }
