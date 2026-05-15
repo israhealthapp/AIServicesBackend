@@ -10,6 +10,17 @@ from app.core.logging import logger
 from app.schemas.chat import ChatRequest, ChatResponse
 
 
+def _detect_text_language(text: str) -> str:
+    """Detect if text is English or Urdu script."""
+    if not text:
+        return "en"
+    # Check for Urdu/Arabic script
+    urdu_pattern = r'[؀-ۿ]'
+    urdu_chars = len(re.findall(urdu_pattern, text))
+    # If >20% of characters are Urdu script, treat as Urdu
+    return "ur" if urdu_chars > len(text) * 0.2 else "en"
+
+
 class ChatService:
     def __init__(self):
         settings = get_settings()
@@ -87,6 +98,11 @@ class ChatService:
 
     def chat(self, request: ChatRequest) -> ChatResponse:
         try:
+            # Detect language of the current user message
+            current_message = request.messages[-1].content if request.messages else ""
+            detected_lang = _detect_text_language(current_message)
+            logger.info(f"[Chat] Detected language: {detected_lang}")
+
             # Format health context if provided
             health_context_text = ""
             if request.healthContext:
@@ -95,9 +111,17 @@ class ChatService:
 
             # Convert messages: Gemini uses "model" instead of "assistant"
             contents = []
-            for m in request.messages:
+            for i, m in enumerate(request.messages):
                 role = "model" if m.role == "assistant" else "user"
-                contents.append(types.Content(role=role, parts=[types.Part(text=m.content)]))
+                # Add language instruction to the current user message (last one)
+                content_text = m.content
+                if i == len(request.messages) - 1 and m.role == "user":
+                    # Add language instruction to the final user message
+                    if detected_lang == "ur":
+                        content_text = f"{content_text}\n\n[LANGUAGE: URDU] Respond ONLY in Urdu script (اردو). Do not use Roman Urdu or English."
+                    else:
+                        content_text = f"{content_text}\n\n[LANGUAGE: ENGLISH] Respond ONLY in English. Do not use Urdu or any other language."
+                contents.append(types.Content(role=role, parts=[types.Part(text=content_text)]))
 
             # Combine system prompt with health context
             full_system_prompt = SYSTEM_PROMPT
@@ -118,7 +142,7 @@ class ChatService:
             # Fix common proper noun misspellings from Gemini
             response_text = self._fix_proper_nouns(response_text)
 
-            # Check if response is JSON (language conversion case)
+            # Check if response is JSON (language conversion case - shouldn't happen in text chat)
             try:
                 parsed = json.loads(response_text)
                 if "detected_language" in parsed and "converted_to_urdu" in parsed:
