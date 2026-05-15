@@ -44,7 +44,20 @@ class ChatService:
 
             for log_type, entries in sorted(by_type.items()):
                 context_text += f"  {log_type}: "
-                values = [str(e.get("value_numeric", e.get("value_text", "N/A"))) for e in entries]
+                # Format values properly (blood_pressure needs systolic/diastolic format)
+                values = []
+                for e in entries:
+                    if log_type == "blood_pressure":
+                        # Blood pressure: systolic/diastolic format
+                        systolic = e.get("value_numeric", "?")
+                        diastolic = e.get("value_text", "?")
+                        values.append(f"{systolic}/{diastolic}")
+                    else:
+                        # Other readings: just the numeric or text value
+                        val = e.get("value_numeric")
+                        if val is None:
+                            val = e.get("value_text", "N/A")
+                        values.append(str(val))
                 context_text += ", ".join(values[:5]) + ("\n" if len(values) <= 5 else f", ... ({len(values)} total)\n")
             logger.debug(f"[Chat] Formatted {len(logs)} health logs into context")
         else:
