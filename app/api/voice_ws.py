@@ -861,10 +861,9 @@ async def voice_ws(websocket: WebSocket):
 
                         response = await gemini_state["gemini_task"]
 
-                        # If we reused a result from a partial but the final changed even
-                        # moderately, run once more with the exact final text to be accurate.
-                        if not significantly_changed and text_delta > 10:
-                            logger.info("[Final] Moderate change — confirming with final text")
+                        # Rerun if text changed meaningfully (more than 10 chars)
+                        if text_delta > 10:
+                            logger.info(f"[Final] Text changed by {text_delta} chars - rerunning")
                             gemini_state["gemini_task"] = asyncio.create_task(
                                 run_gemini_background(final_text)
                             )
