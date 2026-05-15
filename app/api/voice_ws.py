@@ -842,10 +842,9 @@ async def voice_ws(websocket: WebSocket):
                 try:
                     if gemini_state["gemini_task"]:
                         text_delta = len(final_text) - len(gemini_state["latest_used"])
-                        significantly_changed = text_delta > 30
 
                         if gemini_state["gemini_task"].done():
-                            if significantly_changed:
+                            if text_delta > 10:
                                 logger.info(
                                     f"[Final] Text changed by {text_delta} chars — rerunning"
                                 )
@@ -860,14 +859,6 @@ async def voice_ws(websocket: WebSocket):
                             logger.info("[Final] Waiting for in-progress background task")
 
                         response = await gemini_state["gemini_task"]
-
-                        # Rerun if text changed meaningfully (more than 10 chars)
-                        if text_delta > 10:
-                            logger.info(f"[Final] Text changed by {text_delta} chars - rerunning")
-                            gemini_state["gemini_task"] = asyncio.create_task(
-                                run_gemini_background(final_text)
-                            )
-                            response = await gemini_state["gemini_task"]
                     else:
                         logger.info("[Final] No background task — starting fresh")
                         gemini_state["gemini_task"] = asyncio.create_task(
