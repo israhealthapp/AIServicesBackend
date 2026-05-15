@@ -693,7 +693,6 @@ async def voice_ws(websocket: WebSocket):
     # ── Gemini background state ───────────────────────────────────────────────
     gemini_state: dict = {
         "gemini_task": None,
-        "latest_used": "",
         "last_sent_response": None,
     }
 
@@ -823,48 +822,17 @@ async def voice_ws(websocket: WebSocket):
 
             await websocket.send_json(msg)
 
-            # Partial: start one background Gemini task on the first meaningful partial
-            if msg["type"] == "partial" and len(msg["text"]) > 15:
-                if not gemini_state["gemini_task"]:
-                    logger.info(
-                        f"[Gemini] Launching background task on partial: '{msg['text'][:40]}'"
-                    )
-                    gemini_state["latest_used"] = msg["text"]
-                    gemini_state["gemini_task"] = asyncio.create_task(
-                        run_gemini_background(msg["text"])
-                    )
-
-            # Final: resolve background task (reuse or rerun as needed)
-            elif msg["type"] == "final" and msg.get("text"):
+            # Final: call Gemini with complete transcript from Deepgram
+            if msg["type"] == "final" and msg.get("text"):
                 final_text: str = msg["text"]
                 logger.info(f"[Final] Processing: '{final_text[:80]}'")
 
                 try:
-                    if gemini_state["gemini_task"]:
-                        text_delta = len(final_text) - len(gemini_state["latest_used"])
-
-                        if gemini_state["gemini_task"].done():
-                            if text_delta > 10:
-                                logger.info(
-                                    f"[Final] Text changed by {text_delta} chars — rerunning"
-                                )
-                                gemini_state["gemini_task"] = asyncio.create_task(
-                                    run_gemini_background(final_text)
-                                )
-                            else:
-                                logger.info(
-                                    f"[Final] Reusing completed background result (delta: {text_delta})"
-                                )
-                        else:
-                            logger.info("[Final] Waiting for in-progress background task")
-
-                        response = await gemini_state["gemini_task"]
-                    else:
-                        logger.info("[Final] No background task — starting fresh")
-                        gemini_state["gemini_task"] = asyncio.create_task(
-                            run_gemini_background(final_text)
-                        )
-                        response = await gemini_state["gemini_task"]
+                    logger.info("[Final] Calling Gemini with complete transcript")
+                    gemini_state["gemini_task"] = asyncio.create_task(
+                        run_gemini_background(final_text)
+                    )
+                    response = await gemini_state["gemini_task"]
 
                     logger.info(f"[Final] Response ready ({len(response)} chars)")
                     # Commit to session history only after the final answer is confirmed
