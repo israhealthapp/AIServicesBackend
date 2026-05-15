@@ -26,32 +26,44 @@ class ChatService:
 
         # Format recent health logs
         logs = health_context.get("recentHealthLogs", [])
-        if logs:
+        if logs and len(logs) > 0:
             context_text += "\nRecent Health Logs (last 7 days):\n"
             by_type = {}
             for log in logs:
+                if not isinstance(log, dict):
+                    logger.warning(f"[Chat] Skipping non-dict log entry: {log}")
+                    continue
                 log_type = log.get("log_type", "unknown")
                 if log_type not in by_type:
                     by_type[log_type] = []
                 by_type[log_type].append(log)
 
-            for log_type, entries in by_type.items():
+            for log_type, entries in sorted(by_type.items()):
                 context_text += f"  {log_type}: "
                 values = [str(e.get("value_numeric", e.get("value_text", "N/A"))) for e in entries]
                 context_text += ", ".join(values[:5]) + ("\n" if len(values) <= 5 else f", ... ({len(values)} total)\n")
+            logger.debug(f"[Chat] Formatted {len(logs)} health logs into context")
+        else:
+            logger.debug(f"[Chat] No health logs to format")
 
         # Format today's medicines
         medicines_data = health_context.get("todaysMedicines", {})
         medications = medicines_data.get("medications", []) or medicines_data.get("todo_list", {}).get("medications", [])
-        if medications:
+        if medications and len(medications) > 0:
             context_text += "\nToday's Medications:\n"
             for med in medications:
+                if not isinstance(med, dict):
+                    logger.warning(f"[Chat] Skipping non-dict medicine entry: {med}")
+                    continue
                 name = med.get("medication_name", "Unknown")
                 slots = med.get("slots", [])
-                if slots:
-                    times = [s.get("time_slot", "") for s in slots]
-                    dosages = [s.get("dosage", "") for s in slots]
+                if slots and len(slots) > 0:
+                    times = [s.get("time_slot", "") for s in slots if isinstance(s, dict)]
+                    dosages = [s.get("dosage", "") for s in slots if isinstance(s, dict)]
                     context_text += f"  - {name}: {', '.join(times)} ({', '.join(dosages)})\n"
+            logger.debug(f"[Chat] Formatted {len(medications)} medications into context")
+        else:
+            logger.debug(f"[Chat] No medications to format")
 
         context_text += "\n[END HEALTH CONTEXT]\n"
         return context_text

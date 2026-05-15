@@ -611,7 +611,13 @@ async def voice_ws(websocket: WebSocket):
 
                 if msg.get("type") == "health_context":
                     health_context = msg.get("data", health_context)
-                    logger.info(f"[WS] Health context received: {len(health_context.get('recentHealthLogs', []))} logs, {len(health_context.get('todaysMedicines', {}).get('medications', []))} medicines")
+                    logs_count = len(health_context.get('recentHealthLogs', []))
+                    medicines_count = len(health_context.get('todaysMedicines', {}).get('medications', []))
+                    logger.info(f"[WS] Health context received: {logs_count} logs, {medicines_count} medicines")
+                    if logs_count > 0:
+                        logger.debug(f"[WS] Sample health log: {health_context.get('recentHealthLogs', [])[0] if health_context.get('recentHealthLogs') else 'None'}")
+                    if medicines_count > 0:
+                        logger.debug(f"[WS] Sample medicine: {health_context.get('todaysMedicines', {}).get('medications', [])[0] if health_context.get('todaysMedicines', {}).get('medications') else 'None'}")
 
                 elif msg.get("type") == "language_select":
                     selected_language = msg.get("language", "en")
@@ -742,6 +748,7 @@ async def voice_ws(websocket: WebSocket):
 
         # Format health context for Gemini
         health_context_text = chat_service._format_health_context(health_context)
+        logger.debug(f"[Gemini] Formatted health context ({len(health_context_text)} chars): {health_context_text[:200]}...")
         full_system_prompt = SYSTEM_PROMPT + health_context_text
 
         client = genai.Client(api_key=settings.GEMINI_API_KEY)
