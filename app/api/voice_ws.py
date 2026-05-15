@@ -806,6 +806,7 @@ async def voice_ws(websocket: WebSocket):
 
     # ── Send final response ───────────────────────────────────────────────────
     async def send_final_response(response_text: str, detected_language: Optional[str] = None, converted_to_urdu: Optional[str] = None):
+        """Send normalized final response. Backend extracts JSON fields; frontend gets clean data only."""
         if response_text == gemini_state["last_sent_response"]:
             logger.info("[WS] Skipped duplicate final_response")
             return
@@ -815,7 +816,11 @@ async def voice_ws(websocket: WebSocket):
             msg["detected_language"] = detected_language
             msg["converted_to_urdu"] = converted_to_urdu
         await websocket.send_json(msg)
-        logger.info(f"[WS] Sent final_response ({len(response_text)} chars)" + (f" + language metadata" if detected_language else ""))
+
+        log_msg = f"[WS] Sent final_response: text({len(response_text)} chars)"
+        if detected_language:
+            log_msg += f", detected_language={detected_language}, converted_to_urdu({len(converted_to_urdu or '')} chars)"
+        logger.info(log_msg)
 
     # ── Result processor (runs concurrently with audio receiver) ─────────────
     async def process_results():
@@ -839,44 +844,61 @@ async def voice_ws(websocket: WebSocket):
                     response = await gemini_state["gemini_task"]
 
                     logger.info(f"[Final] Response ready ({len(response)} chars)")
+                    logger.debug(f"[Final] Raw response: {repr(response[:100])}")
 
-                    # Extract JSON fields if Gemini returned language detection JSON
+                    # Parse and normalize Gemini response
                     response_text = response
                     detected_lang = None
                     converted_text = None
 
-                    # Try to extract JSON (Gemini should return JSON for Devanagari input)
-                    if '{' in response and '"detected_language"' in response:
+                    # If input was Devanagari, Gemini should return JSON
+                    input_was_devanagari = _contains_devanagari(final_text)
+                    logger.debug(f"[Final] Input was Devanagari: {input_was_devanagari}")
+
+                    if input_was_devanagari:
+                        # Expected: pure JSON from Gemini
+                        # Clean markdown fences if present
+                        cleaned = response.strip()
+                        if cleaned.startswith("```"):
+                            cleaned = cleaned.replace("```json", "").replace("```", "").strip()
+                            logger.debug(f"[Final] Removed markdown fences, cleaned: {repr(cleaned[:100])}")
+
                         try:
-                            start_idx = response.find('{')
-                            if start_idx >= 0:
-                                brace_count = 0
-                                end_idx = -1
-                                for i in range(start_idx, len(response)):
-                                    if response[i] == '{':
-                                        brace_count += 1
-                                    elif response[i] == '}':
-                                        brace_count -= 1
-                                    if brace_count == 0:
-                                        end_idx = i
-                                        break
+                            parsed_dict = json.loads(cleaned)
+                            logger.debug(f"[Final] Successfully parsed JSON, keys: {list(parsed_dict.keys())}")
 
-                                if end_idx > start_idx:
-                                    json_str = response[start_idx:end_idx+1]
-                                    parsed = json.loads(json_str)
+                            # Validate with Pydantic
+                            from app.schemas.chat import GeminiJsonResponse
+                            validated = GeminiJsonResponse(**parsed_dict)
 
-                                    # Check for required Hindi conversion fields
-                                    if "detected_language" in parsed and "converted_to_urdu" in parsed:
-                                        logger.info("[Final] ✓ Found Hindi-to-Urdu JSON structure")
-                                        detected_lang = parsed.get("detected_language")
-                                        converted_text = parsed.get("converted_to_urdu")
-                                        # Use response field if present, otherwise use entire response
-                                        response_text = parsed.get("response", response).strip() if parsed.get("response") else response
-                                        logger.info(f"[Final] Extracted: detected_language={detected_lang}, converted_to_urdu present, response={len(response_text)} chars")
-                        except (json.JSONDecodeError, ValueError) as e:
-                            logger.warning(f"[Final] JSON parse failed ({str(e)[:40]}), sending raw response")
+                            detected_lang = validated.detected_language
+                            converted_text = validated.converted_to_urdu
+                            response_text = validated.response
+
+                            logger.info(
+                                f"[Final] ✓ Validated Hindi-to-Urdu JSON: "
+                                f"detected_language={detected_lang}, "
+                                f"converted_to_urdu({len(converted_text)} chars), "
+                                f"response({len(response_text)} chars)"
+                            )
+
+                        except json.JSONDecodeError as e:
+                            logger.error(f"[Final] JSON decode failed: {e}. Raw: {repr(cleaned[:100])}")
+                            # Fallback: send raw response without language fields
+                            response_text = response
+                            detected_lang = None
+                            converted_text = None
+
+                        except Exception as e:
+                            logger.error(f"[Final] JSON validation failed: {e}")
+                            # Fallback: send raw response without language fields
+                            response_text = response
+                            detected_lang = None
+                            converted_text = None
+
                     else:
-                        logger.info("[Final] Response does not appear to be Hindi conversion JSON")
+                        logger.debug("[Final] Input was not Devanagari, no JSON parsing needed")
+                        response_text = response
 
                     # Commit to session history only after the final answer is confirmed
                     chat_history.append({"role": "user", "content": final_text})

@@ -47,31 +47,37 @@ LANGUAGE HANDLING — CRITICAL:
 1. If user writes in English ONLY → respond in English only. Plain text, no JSON.
 2. If user writes in Urdu script ONLY → respond in Urdu script only. Plain text, no JSON.
 3. If user writes in DEVANAGARI (Hindi script) OR MIXED Devanagari+English:
-   ⚠️ ALWAYS RETURN JSON FOR DEVANAGARI INPUT (pure or mixed with English) ⚠️
+   ⚠️ ALWAYS RETURN PURE JSON FOR DEVANAGARI INPUT (pure or mixed with English) ⚠️
 
    CRITICAL: Follow these steps EXACTLY in order:
    Step 1: Detect Devanagari characters in the message (this indicates Hindi/Urdu spoken but transcribed as Hindi)
    Step 2: Convert the ENTIRE user MESSAGE to Urdu script (including any English words, they stay in English)
    Step 3: Generate your RESPONSE in Urdu script (keep medical terms + proper names in English per earlier rules)
-   Step 4: Return ONLY this valid JSON with ALL THREE fields (NO exceptions):
+   Step 4: Return ONLY this valid JSON with ALL THREE required fields (NO exceptions, NEVER miss a field):
      {"detected_language":"hi","converted_to_urdu":"<full message in Urdu script>","response":"<your response in Urdu script with English medical terms>"}
-   Step 5: Output ONLY raw JSON. Nothing before or after. No markdown, no code fences, no explanation text.
+   Step 5: Output ABSOLUTELY ONLY raw JSON. Nothing before. Nothing after. No markdown. No code fences. No explanation. No extra text. JUST the JSON object.
 
-   ⚠️ CRITICAL REMINDER ⚠️
+   ⚠️ CRITICAL FORMATTING RULES ⚠️
+   - Return ONLY the JSON object — NO markdown code blocks (```json ... ```)
+   - NEVER start with "Here is the JSON:" or any explanation
+   - NEVER add trailing text after the closing }
    - The "response" field is ABSOLUTELY REQUIRED - do not skip it
    - ALL THREE fields must always be present: detected_language, converted_to_urdu, response
+   - Use standard double quotes: "key":"value" (not single quotes)
    - Even for mixed English+Devanagari input, return JSON (not plain text)
-   - Even if the message contains English medical terms, convert it to Urdu and return JSON
+   - Even if the message contains English medical terms, convert message to Urdu and return JSON
 
-EXAMPLE 1 - Pure Devanagari:
+EXAMPLE 1 - Pure Devanagari (CORRECT FORMAT):
 User (Hindi): "mere blood pressure mein problem hai"
 Convert to Urdu: "میرے blood pressure میں مسئلہ ہے"
 Response in Urdu: "آپ کا blood pressure کی نگرانی ضروری ہے۔ براہ کرم اپنا blood pressure لاگ کریں۔"
-Return: {"detected_language":"hi","converted_to_urdu":"میرے blood pressure میں مسئلہ ہے","response":"آپ کا blood pressure کی نگرانی ضروری ہے۔ براہ کرم اپنا blood pressure لاگ کریں۔"}
+RETURN ONLY THIS (no explanation, no code fences, just JSON):
+{"detected_language":"hi","converted_to_urdu":"میرے blood pressure میں مسئلہ ہے","response":"آپ کا blood pressure کی نگرانی ضروری ہے۔ براہ کرم اپنا blood pressure لاگ کریں۔"}
 
-EXAMPLE 2 - Mixed Devanagari+English:
+EXAMPLE 2 - Mixed Devanagari+English (CORRECT FORMAT):
 User (Devanagari+English): "मेरे health logs देखकर advice दो"
 Convert to Urdu: "میرے health logs دیکھ کر advice دو"
 Response in Urdu: "آپ کے health logs میں blood sugar کم ہے۔ براہ کرم contact کریں۔"
-Return: {"detected_language":"hi","converted_to_urdu":"میرے health logs دیکھ کر advice دو","response":"آپ کے health logs میں blood sugar کم ہے۔ براہ کرم contact کریں۔"}
+RETURN ONLY THIS (no explanation, no code fences, just JSON):
+{"detected_language":"hi","converted_to_urdu":"میرے health logs دیکھ کر advice دو","response":"آپ کے health logs میں blood sugar کم ہے۔ براہ کرم contact کریں۔"}
 """
