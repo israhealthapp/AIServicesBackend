@@ -845,11 +845,9 @@ async def voice_ws(websocket: WebSocket):
                     detected_lang = None
                     converted_text = None
 
-                    # Try to extract JSON from response (handles cases where Gemini adds text around JSON)
-                    json_match = None
-                    if '{' in response:
+                    # Try to extract JSON (Gemini should return JSON for Devanagari input)
+                    if '{' in response and '"detected_language"' in response:
                         try:
-                            # Find first { and count braces to extract complete JSON object
                             start_idx = response.find('{')
                             if start_idx >= 0:
                                 brace_count = 0
@@ -866,17 +864,19 @@ async def voice_ws(websocket: WebSocket):
                                 if end_idx > start_idx:
                                     json_str = response[start_idx:end_idx+1]
                                     parsed = json.loads(json_str)
-                                    if "detected_language" in parsed and "converted_to_urdu" in parsed and "response" in parsed:
-                                        logger.info("[Final] ✓ Extracted Hindi-to-Urdu conversion JSON")
-                                        response_text = parsed.get("response", "").strip()
+
+                                    # Check for required Hindi conversion fields
+                                    if "detected_language" in parsed and "converted_to_urdu" in parsed:
+                                        logger.info("[Final] ✓ Found Hindi-to-Urdu JSON structure")
                                         detected_lang = parsed.get("detected_language")
                                         converted_text = parsed.get("converted_to_urdu")
-                                        json_match = True
+                                        # Use response field if present, otherwise use entire response
+                                        response_text = parsed.get("response", response).strip() if parsed.get("response") else response
+                                        logger.info(f"[Final] Extracted: detected_language={detected_lang}, converted_to_urdu present, response={len(response_text)} chars")
                         except (json.JSONDecodeError, ValueError) as e:
-                            logger.warning(f"[Final] JSON extraction failed: {str(e)[:50]}")
-
-                    if not json_match:
-                        logger.info(f"[Final] No language conversion JSON detected, using plain response")
+                            logger.warning(f"[Final] JSON parse failed ({str(e)[:40]}), sending raw response")
+                    else:
+                        logger.info("[Final] Response does not appear to be Hindi conversion JSON")
 
                     # Commit to session history only after the final answer is confirmed
                     chat_history.append({"role": "user", "content": final_text})
