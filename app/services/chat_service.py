@@ -20,12 +20,16 @@ class ChatService:
     def _format_health_context(self, health_context: dict) -> str:
         """Format health context into readable text for the prompt."""
         if not health_context:
+            logger.info(f"[Chat] No health context provided")
             return ""
+
+        logs = health_context.get("recentHealthLogs", [])
+        meds = health_context.get("todaysMedicines", {})
+        logger.info(f"[Chat] Formatting health context: {len(logs) if logs else 0} logs, medicines data present: {bool(meds)}")
 
         context_text = "\n[USER HEALTH CONTEXT - Use this to provide personalized advice]\n"
 
         # Format recent health logs
-        logs = health_context.get("recentHealthLogs", [])
         if logs and len(logs) > 0:
             context_text += "\nRecent Health Logs (last 7 days):\n"
             by_type = {}

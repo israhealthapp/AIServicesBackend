@@ -708,9 +708,13 @@ async def voice_ws(websocket: WebSocket):
         from google.genai import types
         from app.services.chat_service import chat_service
 
+        # Log what health_context we have access to
+        logs_count = len(health_context.get('recentHealthLogs', []))
+        meds_data = health_context.get('todaysMedicines', {})
         logger.info(
             f"[Gemini] Starting call — transcript: '{transcript[:40]}' "
             f"| history length: {len(chat_history)}"
+            f"| health context: {logs_count} logs"
         )
 
         contents = [
@@ -748,7 +752,11 @@ async def voice_ws(websocket: WebSocket):
 
         # Format health context for Gemini
         health_context_text = chat_service._format_health_context(health_context)
-        logger.debug(f"[Gemini] Formatted health context ({len(health_context_text)} chars): {health_context_text[:200]}...")
+        logger.info(f"[Gemini] Formatted health context ({len(health_context_text)} chars)")
+        if health_context_text:
+            logger.info(f"[Gemini] Health context preview: {health_context_text[:300]}")
+        else:
+            logger.info(f"[Gemini] No health context to include (empty after formatting)")
         full_system_prompt = SYSTEM_PROMPT + health_context_text
 
         client = genai.Client(api_key=settings.GEMINI_API_KEY)
