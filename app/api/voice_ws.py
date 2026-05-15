@@ -805,13 +805,17 @@ async def voice_ws(websocket: WebSocket):
         return response_text
 
     # ── Send final response ───────────────────────────────────────────────────
-    async def send_final_response(response_text: str):
+    async def send_final_response(response_text: str, detected_language: Optional[str] = None, converted_to_urdu: Optional[str] = None):
         if response_text == gemini_state["last_sent_response"]:
             logger.info("[WS] Skipped duplicate final_response")
             return
         gemini_state["last_sent_response"] = response_text
-        await websocket.send_json({"type": "final_response", "text": response_text})
-        logger.info(f"[WS] Sent final_response ({len(response_text)} chars)")
+        msg = {"type": "final_response", "text": response_text}
+        if detected_language:
+            msg["detected_language"] = detected_language
+            msg["converted_to_urdu"] = converted_to_urdu
+        await websocket.send_json(msg)
+        logger.info(f"[WS] Sent final_response ({len(response_text)} chars)" + (f" + language metadata" if detected_language else ""))
 
     # ── Result processor (runs concurrently with audio receiver) ─────────────
     async def process_results():
@@ -835,10 +839,25 @@ async def voice_ws(websocket: WebSocket):
                     response = await gemini_state["gemini_task"]
 
                     logger.info(f"[Final] Response ready ({len(response)} chars)")
+
+                    # Extract JSON fields if Gemini returned language detection JSON
+                    response_text = response
+                    detected_lang = None
+                    converted_text = None
+                    try:
+                        parsed = json.loads(response)
+                        if "detected_language" in parsed and "converted_to_urdu" in parsed:
+                            logger.info("[Final] Detected Hindi-to-Urdu conversion JSON")
+                            response_text = parsed.get("response", "")
+                            detected_lang = parsed.get("detected_language")
+                            converted_text = parsed.get("converted_to_urdu")
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+
                     # Commit to session history only after the final answer is confirmed
                     chat_history.append({"role": "user", "content": final_text})
-                    chat_history.append({"role": "assistant", "content": response})
-                    await send_final_response(response)
+                    chat_history.append({"role": "assistant", "content": response_text})
+                    await send_final_response(response_text, detected_lang, converted_text)
 
                     # Persist this turn to DB (after response is already sent)
                     if ws_session_id:
