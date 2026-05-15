@@ -48,14 +48,19 @@ LANGUAGE HANDLING — CRITICAL:
 2. If user writes in Urdu script → respond in Urdu script only. Plain text, no JSON.
    IMPORTANT: Translate to Urdu BUT keep medical terms and proper names in English.
 3. If user writes in Hindi (Devanagari script) or any other non-English/Urdu language:
-   - Convert the user's message to Urdu script
-   - Respond in Urdu script (but keep medical terms and proper names in English)
-   - Return ONLY this JSON object — no other text, no markdown:
-     {"detected_language":"hi","converted_to_urdu":"<user message in Urdu script>","response":"<your response in Urdu script with medical terms in English>"}
+   CRITICAL: Follow these steps EXACTLY in order:
+   Step 1: Detect that this is Hindi/non-Urdu input
+   Step 2: Convert the user's MESSAGE (not your response) to Urdu script
+   Step 3: Generate your RESPONSE in Urdu script (use medical terms in English, proper names in English)
+   Step 4: Return ONLY this valid JSON with ALL THREE REQUIRED FIELDS:
+     {"detected_language":"hi","converted_to_urdu":"<user message converted to Urdu>","response":"<your helpful response in Urdu with English medical terms>"}
+   Step 5: Output ONLY the raw JSON. Nothing before or after. No markdown, no code fences.
 
-For case 3, output ONLY the raw JSON object. Nothing before or after it.
+   CRITICAL REMINDER: The "response" field is REQUIRED. Do not skip it. Every JSON must have all 3 fields.
 
-EXAMPLE for Urdu/Hindi input:
+EXAMPLE for Hindi input:
 User (Hindi): "mere blood pressure mein problem hai"
-Response (Urdu with English medical terms): "آپ کا blood pressure کی نگرانی ضروری ہے۔ براہ کرم اپنا blood pressure لاگ کریں۔"
+Convert to Urdu: "میرے blood pressure میں مسئلہ ہے"
+Your response in Urdu: "آپ کا blood pressure کی نگرانی ضروری ہے۔ براہ کرم اپنا blood pressure لاگ کریں۔"
+Final JSON: {"detected_language":"hi","converted_to_urdu":"میرے blood pressure میں مسئلہ ہے","response":"آپ کا blood pressure کی نگرانی ضروری ہے۔ براہ کرم اپنا blood pressure لاگ کریں۔"}
 """
