@@ -581,6 +581,10 @@ async def voice_ws(websocket: WebSocket):
     loop = asyncio.get_event_loop()
     result_q: asyncio.Queue = asyncio.Queue()
     chat_history: list[dict] = []          # In-memory, per-connection lifetime
+    health_context: dict = {               # Health context for this session
+        "recentHealthLogs": [],
+        "todaysMedicines": {},
+    }
 
     # ── Import Deepgram (with SDK-version fallback) ───────────────────────────
     try:
@@ -595,16 +599,21 @@ async def voice_ws(websocket: WebSocket):
             await websocket.close()
             return
 
-    # ── Step 1: Wait for language selection ──────────────────────────────────
+    # ── Step 1: Wait for health context and language selection ───────────────
     selected_language: Optional[str] = None
-    logger.info("[WS] Awaiting language_select message (ur/en)…")
+    logger.info("[WS] Awaiting health_context and language_select messages…")
 
     try:
         while selected_language is None:
             data = await websocket.receive()
             if "text" in data and data["text"]:
                 msg = json.loads(data["text"])
-                if msg.get("type") == "language_select":
+
+                if msg.get("type") == "health_context":
+                    health_context = msg.get("data", health_context)
+                    logger.info(f"[WS] Health context received: {len(health_context.get('recentHealthLogs', []))} logs, {len(health_context.get('todaysMedicines', {}).get('medications', []))} medicines")
+
+                elif msg.get("type") == "language_select":
                     selected_language = msg.get("language", "en")
                     logger.info(f"[WS] Language selected: {selected_language}")
                     await websocket.send_json(
@@ -691,6 +700,7 @@ async def voice_ws(websocket: WebSocket):
         """
         from google import genai
         from google.genai import types
+        from app.services.chat_service import chat_service
 
         logger.info(
             f"[Gemini] Starting call — transcript: '{transcript[:40]}' "
@@ -730,6 +740,10 @@ async def voice_ws(websocket: WebSocket):
             types.Content(role="user", parts=[types.Part(text=user_message)])
         )
 
+        # Format health context for Gemini
+        health_context_text = chat_service._format_health_context(health_context)
+        full_system_prompt = SYSTEM_PROMPT + health_context_text
+
         client = genai.Client(api_key=settings.GEMINI_API_KEY)
         token_q: asyncio.Queue = asyncio.Queue()
         full_response = ""
@@ -741,7 +755,7 @@ async def voice_ws(websocket: WebSocket):
                     model=settings.GEMINI_MODEL,
                     contents=contents,
                     config=types.GenerateContentConfig(
-                        system_instruction=SYSTEM_PROMPT,
+                        system_instruction=full_system_prompt,
                         max_output_tokens=settings.GEMINI_MAX_TOKENS,
                     ),
                 ):
