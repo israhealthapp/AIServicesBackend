@@ -7,8 +7,14 @@ class Message(BaseModel):
     content: str = Field(..., min_length=1, max_length=10000)
 
 
+class HealthContext(BaseModel):
+    recentHealthLogs: list = Field(default_factory=list)
+    todaysMedicines: dict = Field(default_factory=dict)
+
+
 class ChatRequest(BaseModel):
     messages: list[Message] = Field(..., min_length=1, max_length=100)
+    healthContext: Optional[HealthContext] = None
 
 
 class ChatResponse(BaseModel):
